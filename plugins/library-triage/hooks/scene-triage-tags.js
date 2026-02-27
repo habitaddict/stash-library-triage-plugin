@@ -153,29 +153,10 @@
       });
   }
 
-  function fetchAllStudioIDs() {
-    var q = "query ($filter: FindFilterType) { findStudios(filter: $filter) { studios { id } } }";
-    var res = doGQL(q, { filter: { per_page: -1 } });
-    var studios = res && res.findStudios ? res.findStudios.studios : [];
-    return (studios || [])
-      .map(function (s) {
-        return s && s.id ? String(s.id) : null;
-      })
-      .filter(function (id) {
-        return !!id;
-      });
-  }
-
   function fetchPerformer(performerID) {
     var q = "query ($id: ID!) { findPerformer(id: $id) { id custom_fields } }";
     var res = doGQL(q, { id: String(performerID) });
     return res && res.findPerformer ? res.findPerformer : null;
-  }
-
-  function fetchStudio(studioID) {
-    var q = "query ($id: ID!) { findStudio(id: $id) { id custom_fields } }";
-    var res = doGQL(q, { id: String(studioID) });
-    return res && res.findStudio ? res.findStudio : null;
   }
 
   function countUnratedScenesByPerformer(performerID) {
@@ -184,18 +165,6 @@
       filter: { per_page: 1 },
       scene_filter: {
         performers: { value: [String(performerID)], modifier: "INCLUDES" },
-        rating100: { value: 0, modifier: "IS_NULL" },
-      },
-    });
-    return res && res.findScenes ? Number(res.findScenes.count || 0) : 0;
-  }
-
-  function countUnratedScenesByStudio(studioID) {
-    var q = "query ($filter: FindFilterType, $scene_filter: SceneFilterType) { findScenes(filter: $filter, scene_filter: $scene_filter) { count } }";
-    var res = doGQL(q, {
-      filter: { per_page: 1 },
-      scene_filter: {
-        studios: { value: [String(studioID)], modifier: "INCLUDES" },
         rating100: { value: 0, modifier: "IS_NULL" },
       },
     });
@@ -225,37 +194,9 @@
     return true;
   }
 
-  function updateStudioCustomFieldCount(studioID, count) {
-    var studio = fetchStudio(studioID);
-    if (!studio) return false;
-
-    var current = getCustomFieldInt(studio.custom_fields, UNRATED_CF_KEY);
-    if (current === count) return false;
-
-    var q = "mutation ($input: StudioUpdateInput!) { studioUpdate(input: $input) { id } }";
-    doGQL(q, {
-      input: {
-        id: String(studioID),
-        custom_fields: {
-          partial: (function () {
-            var obj = {};
-            obj[UNRATED_CF_KEY] = count;
-            return obj;
-          })(),
-        },
-      },
-    });
-    return true;
-  }
-
   function refreshPerformerCount(performerID) {
     var count = countUnratedScenesByPerformer(performerID);
     return updatePerformerCustomFieldCount(performerID, count);
-  }
-
-  function refreshStudioCount(studioID) {
-    var count = countUnratedScenesByStudio(studioID);
-    return updateStudioCustomFieldCount(studioID, count);
   }
 
   function refreshCountsForScene(sceneID) {
@@ -278,33 +219,21 @@
       if (refreshPerformerCount(performerIDs[i])) updated += 1;
     }
 
-    if (scene.studio && scene.studio.id) {
-      checked += 1;
-      if (refreshStudioCount(String(scene.studio.id))) updated += 1;
-    }
-
     return { updated: updated, checked: checked };
   }
 
   function recountAllUnratedCounts() {
     var performerIDs = fetchAllPerformerIDs();
-    var studioIDs = fetchAllStudioIDs();
     var updated = 0;
 
     for (var i = 0; i < performerIDs.length; i += 1) {
       if (refreshPerformerCount(performerIDs[i])) updated += 1;
     }
 
-    for (var j = 0; j < studioIDs.length; j += 1) {
-      if (refreshStudioCount(studioIDs[j])) updated += 1;
-    }
-
     return {
       Output:
         "Recounted unrated scene counts. performers=" +
         performerIDs.length +
-        ", studios=" +
-        studioIDs.length +
         ", updated=" +
         updated,
     };
@@ -498,11 +427,6 @@
     return fields.length > 0 && fields.length === 1 && fields[0] === "custom_fields";
   }
 
-  function shouldSkipStudioCountHook(hookContext) {
-    var fields = Array.isArray(hookContext.inputFields) ? hookContext.inputFields : [];
-    return fields.length > 0 && fields.length === 1 && fields[0] === "custom_fields";
-  }
-
   function runSceneTagAction() {
     var hookContext = getHookContext();
     if (!hookContext || !hookContext.id) {
@@ -602,16 +526,6 @@
       var performerID = String(hookContext.id);
       var changed = refreshPerformerCount(performerID);
       return { Output: "Performer " + performerID + " unrated_scene_count " + (changed ? "updated" : "unchanged") };
-    }
-
-    if (hookType === "Studio.Update.Post") {
-      if (shouldSkipStudioCountHook(hookContext)) {
-        return { Output: "Skipping studio count hook for custom_fields-only update" };
-      }
-
-      var studioID = String(hookContext.id);
-      var changedStudio = refreshStudioCount(studioID);
-      return { Output: "Studio " + studioID + " unrated_scene_count " + (changedStudio ? "updated" : "unchanged") };
     }
 
     return { Output: "No count action for hook type " + hookType + ", skipping" };

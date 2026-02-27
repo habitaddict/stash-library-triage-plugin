@@ -4,6 +4,7 @@ This repository contains a Stash plugin focused on library cleanup workflows:
 
 - largest scene files triage page
 - scene auto-tagging from female performer rating and age signals
+- performer/studio unrated-scene count ranking
 
 ## Repository layout
 
@@ -31,11 +32,22 @@ This repository contains a Stash plugin focused on library cleanup workflows:
 
 - UI route: `/plugin/library-triage`
   - scenes sorted by filesize descending
-  - quick filtering by female performer signals
+  - filters for scene rating, female performer age, female performer rating, unrated-only
+- UI route: `/plugin/library-triage-entities`
+  - performers and studios ranked by unrated scene counts
+  - performer counts are read from `custom_fields.triage_unrated_scene_count`
+  - studio counts are computed live from unrated scenes
 - Hook auto-tagging on:
   - `Scene.Create.Post`
   - `Scene.Update.Post`
   - `Performer.Update.Post`
+- Hook custom-field updates on:
+  - `Scene.Create.Post`
+  - `Scene.Update.Post`
+  - `Scene.Destroy.Post`
+  - `Performer.Update.Post`
+- Task:
+  - `Recompute unrated scene counts` (full recount for performers)
 
 Managed tag prefixes used by the hook:
 
@@ -53,3 +65,9 @@ Female rating tags use a 1-5 scale:
 - `girl-rated-4`
 - `girl-rated-5`
 - `girl-rated-unknown`
+
+Age-gap tags:
+
+- `Age Gap: Male 10++ years older than Female`
+- `Age Gap: Male 25++ years older`
+- `YFEM`

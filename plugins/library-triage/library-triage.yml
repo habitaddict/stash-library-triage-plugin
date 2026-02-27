@@ -16,7 +16,7 @@ exec:
 
 tasks:
   - name: Recompute unrated scene counts
-    description: Recomputes triage_unrated_scene_count for all performers and studios.
+    description: Recomputes triage_unrated_scene_count for all performers.
     defaultArgs:
       action: recount_unrated_all
 
@@ -30,7 +30,7 @@ hooks:
       - Scene.Update.Post
       - Performer.Update.Post
   - name: Update unrated scene counts
-    description: Updates triage_unrated_scene_count custom fields.
+    description: Updates performer triage_unrated_scene_count custom fields.
     defaultArgs:
       action: update_unrated_counts
     triggeredBy:
@@ -38,4 +38,3 @@ hooks:
       - Scene.Update.Post
       - Scene.Destroy.Post
       - Performer.Update.Post
-      - Studio.Update.Post

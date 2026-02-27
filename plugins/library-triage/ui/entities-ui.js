@@ -36,8 +36,15 @@
           name
           rating100
           scene_count
-          custom_fields
         }
+      }
+    }
+  `;
+
+  var COUNT_UNRATED_BY_STUDIO = Apollo.gql`
+    query LibraryTriageCountUnratedByStudio($filter: FindFilterType, $scene_filter: SceneFilterType) {
+      findScenes(filter: $filter, scene_filter: $scene_filter) {
+        count
       }
     }
   `;
@@ -64,8 +71,11 @@
   }
 
   function EntityCountsPage() {
+    var apolloClient = Apollo.useApolloClient();
     var _a = React.useState("1"), minUnrated = _a[0], setMinUnrated = _a[1];
     var _b = React.useState(true), hideZero = _b[0], setHideZero = _b[1];
+    var _c = React.useState({}), studioUnratedByID = _c[0], setStudioUnratedByID = _c[1];
+    var _d = React.useState(false), studioCountLoading = _d[0], setStudioCountLoading = _d[1];
 
     var performersQuery = Apollo.useQuery(FIND_PERFORMERS, {
       variables: { filter: { per_page: -1 } },
@@ -76,6 +86,53 @@
       variables: { filter: { per_page: -1 } },
       fetchPolicy: "cache-and-network",
     });
+
+    React.useEffect(function () {
+      var studios = (((studiosQuery.data || {}).findStudios || {}).studios) || [];
+      if (!studios.length) {
+        setStudioUnratedByID({});
+        return;
+      }
+
+      var cancelled = false;
+      setStudioCountLoading(true);
+
+      Promise.all(
+        studios.map(function (studio) {
+          return apolloClient
+            .query({
+              query: COUNT_UNRATED_BY_STUDIO,
+              variables: {
+                filter: { per_page: 1 },
+                scene_filter: {
+                  studios: { value: [String(studio.id)], modifier: "INCLUDES" },
+                  rating100: { value: 0, modifier: "IS_NULL" },
+                },
+              },
+              fetchPolicy: "network-only",
+            })
+            .then(function (res) {
+              var count = (((res.data || {}).findScenes || {}).count) || 0;
+              return { id: String(studio.id), count: Number(count) || 0 };
+            })
+            .catch(function () {
+              return { id: String(studio.id), count: 0 };
+            });
+        })
+      ).then(function (pairs) {
+        if (cancelled) return;
+        var next = {};
+        for (var i = 0; i < pairs.length; i += 1) {
+          next[pairs[i].id] = pairs[i].count;
+        }
+        setStudioUnratedByID(next);
+        setStudioCountLoading(false);
+      });
+
+      return function () {
+        cancelled = true;
+      };
+    }, [apolloClient, studiosQuery.data]);
 
     var minUnratedNum = React.useMemo(function () {
       var n = Number(minUnrated);
@@ -110,7 +167,7 @@
             name: s.name || "[Unnamed Studio]",
             rating5: rating100To5(s.rating100),
             sceneCount: typeof s.scene_count === "number" ? s.scene_count : 0,
-            unratedCount: getUnratedCount(s.custom_fields),
+            unratedCount: Number(studioUnratedByID[String(s.id)] || 0),
           };
         })
         .filter(function (s) {
@@ -118,7 +175,7 @@
           return s.unratedCount >= minUnratedNum;
         })
         .sort(byUnratedThenName);
-    }, [studiosQuery.data, hideZero, minUnratedNum]);
+    }, [studiosQuery.data, studioUnratedByID, hideZero, minUnratedNum]);
 
     return React.createElement(
       "div",
@@ -165,7 +222,9 @@
         )
       ),
 
-      performersQuery.loading || studiosQuery.loading ? React.createElement("div", null, "Loading...") : null,
+      performersQuery.loading || studiosQuery.loading || studioCountLoading
+        ? React.createElement("div", null, "Loading...")
+        : null,
       performersQuery.error
         ? React.createElement("div", { className: "text-danger" }, "Performer query error: " + performersQuery.error.message)
         : null,
