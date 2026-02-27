@@ -8,7 +8,7 @@ This repository contains a Stash plugin focused on library cleanup workflows:
 ## Repository layout
 
 - `plugins/library-triage/` is the plugin package root.
-- `.github/workflows/deploy.yml` + `build_site.sh` publish a Stash plugin source index to GitHub Pages.
+- `.github/workflows/deploy.yml` + `build_site.sh` publish the Stash plugin source index to GitHub Pages.
 
 ## Quick local install
 
@@ -18,13 +18,14 @@ This repository contains a Stash plugin focused on library cleanup workflows:
 
 ## Web app install flow (recommended)
 
-1. Push this repo to GitHub.
+1. Push this repo to GitHub at:
+   - `https://github.com/helperbot-3/stash-library-triage-plugin`
 2. In GitHub repo settings, enable **Pages** with source **GitHub Actions**.
 3. Push a commit to `main` that touches `plugins/**` (or run the workflow manually).
-4. After the workflow succeeds, use this source URL in Stash:
-   - `https://<your-user>.github.io/<your-repo>/main/index.yml`
+4. After the workflow succeeds, add this source URL in Stash:
+   - `https://helperbot-3.github.io/stash-library-triage-plugin/main/index.yml`
 5. In Stash: **Settings > Plugins > Available Plugins > Sources**, add that URL.
-6. Install `Library Triage` from that source.
+6. Install or update `Library Triage` from that source.
 
 ## What it adds
 
