@@ -151,22 +151,24 @@
   }
 
   function TriagePage() {
-    var _a = React.useState(true), onlyFemale = _a[0], setOnlyFemale = _a[1];
-    var _b = React.useState(false), unratedOnly = _b[0], setUnratedOnly = _b[1];
+    var _a = React.useState(false), unratedOnly = _a[0], setUnratedOnly = _a[1];
 
-    var _c = React.useState(""), minSceneRating = _c[0], setMinSceneRating = _c[1];
-    var _d = React.useState(""), maxSceneRating = _d[0], setMaxSceneRating = _d[1];
+    var _b = React.useState(""), minSceneRating = _b[0], setMinSceneRating = _b[1];
+    var _c = React.useState(""), maxSceneRating = _c[0], setMaxSceneRating = _c[1];
 
-    var _e = React.useState(""), minFemaleRating = _e[0], setMinFemaleRating = _e[1];
-    var _f = React.useState(""), maxFemaleRating = _f[0], setMaxFemaleRating = _f[1];
+    var _d = React.useState(""), minFemaleRating = _d[0], setMinFemaleRating = _d[1];
+    var _e = React.useState(""), maxFemaleRating = _e[0], setMaxFemaleRating = _e[1];
 
-    var _g = React.useState(""), minFemaleAge = _g[0], setMinFemaleAge = _g[1];
-    var _h = React.useState(""), maxFemaleAge = _h[0], setMaxFemaleAge = _h[1];
+    var _f = React.useState(""), minFemaleAge = _f[0], setMinFemaleAge = _f[1];
+    var _g = React.useState(""), maxFemaleAge = _g[0], setMaxFemaleAge = _g[1];
+    var _h = React.useState("200"), perPage = _h[0], setPerPage = _h[1];
+    var _i = React.useState(1), serverPage = _i[0], setServerPage = _i[1];
 
     var query = Apollo.useQuery(FIND_SCENES_TRIAGE, {
       variables: {
         filter: {
-          per_page: 250,
+          per_page: Math.max(1, parseOptionalNumber(perPage) || 200),
+          page: serverPage,
           sort: "filesize",
           direction: "DESC",
         },
@@ -189,8 +191,6 @@
 
       return withMeta
         .filter(function (row) {
-          if (onlyFemale && row.meta.females.length === 0) return false;
-
           if (unratedOnly) {
             if (row.meta.sceneRating5 != null) return false;
           } else if (minScene != null || maxScene != null) {
@@ -207,7 +207,6 @@
         });
     }, [
       query.data,
-      onlyFemale,
       unratedOnly,
       minSceneRating,
       maxSceneRating,
@@ -216,6 +215,12 @@
       minFemaleAge,
       maxFemaleAge,
     ]);
+    var perPageNum = Math.max(1, parseOptionalNumber(perPage) || 200);
+    var serverTotal = (((query.data || {}).findScenes || {}).count) || 0;
+    var pageCount = Math.max(1, Math.ceil(serverTotal / perPageNum));
+    var currentPage = Math.min(serverPage, pageCount);
+    var visibleFrom = rows.length === 0 ? 0 : (currentPage - 1) * perPageNum + 1;
+    var visibleTo = visibleFrom + rows.length - 1;
 
     return React.createElement(
       "div",
@@ -231,21 +236,26 @@
         { className: "library-triage-toolbar" },
         React.createElement(Form.Check, {
           type: "checkbox",
-          id: "triage-only-female",
-          label: "Only scenes with female performer",
-          checked: onlyFemale,
-          onChange: function (e) {
-            setOnlyFemale(e.target.checked);
-          },
-        }),
-        React.createElement(Form.Check, {
-          type: "checkbox",
           id: "triage-unrated-only",
           label: "Only unrated scenes",
           checked: unratedOnly,
           onChange: function (e) {
             setUnratedOnly(e.target.checked);
+            setServerPage(1);
           },
+        }),
+        React.createElement("label", { htmlFor: "triage-per-page" }, "Rows per page:"),
+        React.createElement(Form.Control, {
+          id: "triage-per-page",
+          type: "number",
+          min: 1,
+          style: { width: "7rem" },
+          value: perPage,
+          onChange: function (e) {
+            setPerPage(e.target.value);
+            setServerPage(1);
+          },
+          placeholder: "200",
         }),
 
         React.createElement("label", { htmlFor: "triage-min-scene-rating" }, "Scene rating min:"),
@@ -258,6 +268,7 @@
           value: minSceneRating,
           onChange: function (e) {
             setMinSceneRating(e.target.value);
+            setServerPage(1);
           },
           placeholder: "any",
         }),
@@ -271,6 +282,7 @@
           value: maxSceneRating,
           onChange: function (e) {
             setMaxSceneRating(e.target.value);
+            setServerPage(1);
           },
           placeholder: "any",
         }),
@@ -285,6 +297,7 @@
           value: minFemaleRating,
           onChange: function (e) {
             setMinFemaleRating(e.target.value);
+            setServerPage(1);
           },
           placeholder: "any",
         }),
@@ -298,6 +311,7 @@
           value: maxFemaleRating,
           onChange: function (e) {
             setMaxFemaleRating(e.target.value);
+            setServerPage(1);
           },
           placeholder: "any",
         }),
@@ -311,6 +325,7 @@
           value: minFemaleAge,
           onChange: function (e) {
             setMinFemaleAge(e.target.value);
+            setServerPage(1);
           },
           placeholder: "any",
         }),
@@ -323,6 +338,7 @@
           value: maxFemaleAge,
           onChange: function (e) {
             setMaxFemaleAge(e.target.value);
+            setServerPage(1);
           },
           placeholder: "any",
         }),
@@ -336,6 +352,50 @@
             },
           },
           "Refresh"
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "library-triage-muted", style: { marginBottom: "0.5rem" } },
+        "Showing " +
+          String(visibleFrom) +
+          "-" +
+          String(visibleTo) +
+          " of " +
+          String(rows.length) +
+          " filtered scenes on this page (" +
+          String(serverTotal) +
+          " total scenes)."
+      ),
+      React.createElement(
+        "div",
+        { className: "library-triage-toolbar", style: { marginBottom: "0.75rem" } },
+        React.createElement(
+          Button,
+          {
+            size: "sm",
+            disabled: currentPage <= 1,
+            onClick: function () {
+              setServerPage(Math.max(1, currentPage - 1));
+            },
+          },
+          "Prev"
+        ),
+        React.createElement(
+          "span",
+          { className: "library-triage-muted" },
+          "Page " + String(currentPage) + " / " + String(pageCount)
+        ),
+        React.createElement(
+          Button,
+          {
+            size: "sm",
+            disabled: currentPage >= pageCount,
+            onClick: function () {
+              setServerPage(Math.min(pageCount, currentPage + 1));
+            },
+          },
+          "Next"
         )
       ),
       query.loading ? React.createElement("div", null, "Loading...") : null,
