@@ -38,3 +38,10 @@ hooks:
       - Scene.Update.Post
       - Scene.Destroy.Post
       - Performer.Update.Post
+  - name: Auto-tag performer rating
+    description: Adds performer tag rated 1..5 from performer rating.
+    defaultArgs:
+      action: performer_rating_tags
+    triggeredBy:
+      - Performer.Create.Post
+      - Performer.Update.Post

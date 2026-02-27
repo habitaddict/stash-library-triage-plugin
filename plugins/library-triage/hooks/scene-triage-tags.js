@@ -13,6 +13,7 @@
     "triage/female-age/",
     "Age Gap:",
   ];
+  var PERFORMER_RATING_TAG_REGEX = /^rated [1-5]$/;
 
   var UNRATED_CF_KEY = "triage_unrated_scene_count";
 
@@ -65,6 +66,14 @@
     if (stars < 1) stars = 1;
     if (stars > 5) stars = 5;
     return String(stars);
+  }
+
+  function ratingStarsOrNull(rating100) {
+    if (typeof rating100 !== "number" || !Number.isFinite(rating100)) return null;
+    var stars = Math.round(rating100 / 20);
+    if (stars < 1) stars = 1;
+    if (stars > 5) stars = 5;
+    return stars;
   }
 
   function hasManagedPrefix(name) {
@@ -155,6 +164,12 @@
 
   function fetchPerformer(performerID) {
     var q = "query ($id: ID!) { findPerformer(id: $id) { id custom_fields } }";
+    var res = doGQL(q, { id: String(performerID) });
+    return res && res.findPerformer ? res.findPerformer : null;
+  }
+
+  function fetchPerformerForRatingTag(performerID) {
+    var q = "query ($id: ID!) { findPerformer(id: $id) { id rating100 tags { id name } } }";
     var res = doGQL(q, { id: String(performerID) });
     return res && res.findPerformer ? res.findPerformer : null;
   }
@@ -279,6 +294,51 @@
         tag_ids: tagIDs,
       },
     });
+  }
+
+  function updatePerformerTags(performerID, tagIDs) {
+    var q = "mutation ($input: PerformerUpdateInput!) { performerUpdate(input: $input) { id } }";
+    doGQL(q, {
+      input: {
+        id: String(performerID),
+        tag_ids: tagIDs,
+      },
+    });
+  }
+
+  function processPerformerRatingTag(performerID) {
+    var performer = fetchPerformerForRatingTag(performerID);
+    if (!performer) {
+      return { Error: "Performer not found for hook context id " + performerID };
+    }
+
+    var currentTags = performer.tags || [];
+    var keepTagIDs = [];
+    var currentAllIDs = [];
+
+    for (var i = 0; i < currentTags.length; i += 1) {
+      var t = currentTags[i];
+      currentAllIDs.push(t.id);
+      if (!PERFORMER_RATING_TAG_REGEX.test(String(t.name || ""))) {
+        keepTagIDs.push(t.id);
+      }
+    }
+
+    var desiredTagIDs = [];
+    var stars = ratingStarsOrNull(performer.rating100);
+    if (stars != null) {
+      desiredTagIDs.push(getOrCreateTagID("rated " + String(stars)));
+    }
+
+    var nextAllIDs = keepTagIDs.concat(desiredTagIDs);
+    var currentSorted = sortedUnique(currentAllIDs);
+    var nextSorted = sortedUnique(nextAllIDs);
+    if (sameSortedStringSet(currentSorted, nextSorted)) {
+      return { Output: "No performer rating tag changes for performer " + performerID };
+    }
+
+    updatePerformerTags(performerID, nextAllIDs);
+    return { Output: "Updated performer rating tag for performer " + performerID };
   }
 
   function processSceneTags(sceneID) {
@@ -427,6 +487,18 @@
     return fields.length > 0 && fields.length === 1 && fields[0] === "custom_fields";
   }
 
+  function shouldSkipPerformerRatingTagHook(hookContext) {
+    var hookType = String(hookContext.type || "");
+    if (hookType === "Performer.Create.Post") return false;
+    if (hookType !== "Performer.Update.Post") return true;
+    var fields = Array.isArray(hookContext.inputFields) ? hookContext.inputFields : [];
+    if (fields.length === 0) return false;
+    for (var i = 0; i < fields.length; i += 1) {
+      if (fields[i] === "rating100") return false;
+    }
+    return true;
+  }
+
   function runSceneTagAction() {
     var hookContext = getHookContext();
     if (!hookContext || !hookContext.id) {
@@ -531,11 +603,27 @@
     return { Output: "No count action for hook type " + hookType + ", skipping" };
   }
 
+  function runPerformerRatingTagAction() {
+    var hookContext = getHookContext();
+    if (!hookContext || !hookContext.id) {
+      return { Output: "No hook context for performer rating tag action, skipping" };
+    }
+
+    if (shouldSkipPerformerRatingTagHook(hookContext)) {
+      return { Output: "Performer update had no rating change, skipping performer rating tag update" };
+    }
+
+    return processPerformerRatingTag(String(hookContext.id));
+  }
+
   function main() {
     var action = getAction();
 
     if (action === "update_unrated_counts" || action === "recount_unrated_all") {
       return runUnratedCountAction();
+    }
+    if (action === "performer_rating_tags") {
+      return runPerformerRatingTagAction();
     }
 
     return runSceneTagAction();
