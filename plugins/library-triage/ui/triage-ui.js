@@ -40,7 +40,6 @@
 
   var FEMALE_GENDERS = {
     FEMALE: true,
-    TRANSGENDER_FEMALE: true,
   };
 
   function bytesHuman(size) {

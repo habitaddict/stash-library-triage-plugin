@@ -39,10 +39,11 @@ This repository contains a Stash plugin focused on library cleanup workflows:
 
 Managed tag prefixes used by the hook:
 
-- `triage/female-performer`
 - `girl-rated-*`
 - age buckets like `18-22 years old`, `35-40 years old`, `40-45 years old`, `> 45 years old`
 - exact ages like `<N> years old`
+
+Note: "female" in this plugin means `gender == FEMALE` only.
 
 Female rating tags use a 1-5 scale:
 

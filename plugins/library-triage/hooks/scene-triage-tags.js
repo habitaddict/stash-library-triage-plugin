@@ -1,7 +1,6 @@
 (function () {
   var FEMALE_GENDERS = {
     FEMALE: true,
-    TRANSGENDER_FEMALE: true,
   };
   var MALE_GENDERS = {
     MALE: true,
@@ -9,7 +8,6 @@
   };
 
   var MANAGED_PREFIXES = [
-    "triage/female-performer",
     "girl-rated-",
     "triage/female-rating/",
     "triage/female-age/",
@@ -220,7 +218,7 @@
   }
 
   function buildManagedTags(scene) {
-    var tags = ["triage/female-performer"]; // presence marker, removed if no female performers
+    var tags = [];
 
     var performers = scene.performers || [];
     var females = performers.filter(function (p) {
