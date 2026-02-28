@@ -510,7 +510,7 @@
         tags.push("Age Gap: Male 25++ years older");
       }
       if (hasYFEM) {
-        tags.push("YFEM");
+        tags.push(YFEM_CANONICAL_TAG);
       }
     }
 

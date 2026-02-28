@@ -73,7 +73,7 @@ When a scene has at least one performer with `gender == FEMALE`, the plugin mana
 - Age-gap tags:
   - `Age Gap: Male 10++ years older than Female`
   - `Age Gap: Male 25++ years older`
-  - `YFEM` (young female `<23`, male at least 10 years older)
+  - `Age Gap: Young Female (<23y), Experienced Male (10y older)` (you can keep `YFEM` as alias in Stash)
 
 Notes:
 - Female means exactly `gender == FEMALE` (transgender female is intentionally ignored).
@@ -114,4 +114,4 @@ Notes:
 - `Recompute unrated scene counts`
   - full recount of `triage_unrated_scene_count` for all performers
 - `Backfill scene triage tags`
-  - reprocesses all scenes and reapplies managed scene tags (age, rating, age-gap, YFEM)
+  - reprocesses all scenes and reapplies managed scene tags (age, rating, age-gap)
