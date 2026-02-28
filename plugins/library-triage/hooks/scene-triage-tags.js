@@ -674,9 +674,54 @@
 
   function sceneUpdateNeedsGlobalRecount(hookContext) {
     var fields = Array.isArray(hookContext.inputFields) ? hookContext.inputFields : [];
+    var input = hookContext && hookContext.input && typeof hookContext.input === "object" ? hookContext.input : {};
+
+    function hasOwn(obj, key) {
+      return Object.prototype.hasOwnProperty.call(obj, key);
+    }
+
+    function isNonNilValue(v) {
+      if (v == null) return false;
+      if (typeof v === "string") return v.trim() !== "";
+      return true;
+    }
+
+    function relationshipBulkValueHasChange(v) {
+      if (!v || typeof v !== "object") return false;
+      if (Array.isArray(v.ids) && v.ids.length > 0) return true;
+      if (typeof v.mode === "string" && v.mode.trim() !== "") return true;
+      // If object exists (even empty ids), treat as explicit relationship update intent.
+      return Object.keys(v).length > 0;
+    }
+
     for (var i = 0; i < fields.length; i += 1) {
       var f = String(fields[i] || "");
-      if (f === "performer_ids" || f === "performers" || f === "studio_id" || f === "studio") {
+      if (f === "performer_ids") {
+        if (hasOwn(input, "performer_ids")) {
+          if (relationshipBulkValueHasChange(input.performer_ids)) return true;
+          continue;
+        }
+        return true;
+      }
+      if (f === "performers") {
+        if (hasOwn(input, "performers")) {
+          if (isNonNilValue(input.performers)) return true;
+          continue;
+        }
+        return true;
+      }
+      if (f === "studio_id") {
+        if (hasOwn(input, "studio_id")) {
+          if (isNonNilValue(input.studio_id)) return true;
+          continue;
+        }
+        return true;
+      }
+      if (f === "studio") {
+        if (hasOwn(input, "studio")) {
+          if (isNonNilValue(input.studio)) return true;
+          continue;
+        }
         return true;
       }
     }
@@ -837,7 +882,12 @@
 
     if (hookType === "Scene.Update.Post") {
       if (sceneUpdateNeedsGlobalRecount(hookContext)) {
-        return recountAllUnratedCounts();
+        var full = recountAllUnratedCounts();
+        if (full && full.Output) {
+          var fields = Array.isArray(hookContext.inputFields) ? hookContext.inputFields.join(",") : "";
+          full.Output = "Global recount on scene update (relationship change; fields=" + fields + "). " + full.Output;
+        }
+        return full;
       }
 
       var sceneUpdateResult = refreshCountsForScene(String(hookContext.id));
