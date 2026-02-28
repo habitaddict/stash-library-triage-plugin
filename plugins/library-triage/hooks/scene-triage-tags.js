@@ -694,6 +694,12 @@
       return Object.keys(v).length > 0;
     }
 
+    // Bulk scene updates include "ids" and often carry relationship keys even for rating-only edits.
+    // Treat bulk scene updates as fast-path and rely on targeted refresh + manual full recount if needed.
+    if (hasOwn(input, "ids")) {
+      return false;
+    }
+
     for (var i = 0; i < fields.length; i += 1) {
       var f = String(fields[i] || "");
       if (f === "performer_ids") {

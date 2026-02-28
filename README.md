@@ -112,6 +112,7 @@ Notes:
   - `Scene.Update.Post` (fast path for rating/file changes, full recount when studio/performer links change)
   - `Scene.Destroy.Post` (fast targeted refresh from hook payload, no global recount)
   - `Performer.Update.Post`
+  - bulk scene updates (`ids` payload) always use fast targeted refresh
 
 ### Performer `rated X` tags
 - Triggered by:
