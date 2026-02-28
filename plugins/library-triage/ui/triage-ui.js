@@ -150,76 +150,151 @@
     };
   }
 
-  function TriagePage() {
-    var _a = React.useState(false), unratedOnly = _a[0], setUnratedOnly = _a[1];
+  function rowMatchesFilters(row, filters) {
+    if (filters.unratedOnly) {
+      if (row.meta.sceneRating5 != null) return false;
+    } else if (filters.minScene != null || filters.maxScene != null) {
+      if (!inRange(row.meta.sceneRating5, filters.minScene, filters.maxScene)) return false;
+    }
 
+    if (!anyInRange(row.meta.femaleRatingValues5, filters.minFR, filters.maxFR)) return false;
+    if (!anyInRange(row.meta.femaleAgeValues, filters.minFA, filters.maxFA)) return false;
+    return true;
+  }
+
+  function TriagePage() {
+    var apolloClient = Apollo.useApolloClient();
+    var _a = React.useState(false), unratedOnly = _a[0], setUnratedOnly = _a[1];
     var _b = React.useState(""), minSceneRating = _b[0], setMinSceneRating = _b[1];
     var _c = React.useState(""), maxSceneRating = _c[0], setMaxSceneRating = _c[1];
-
     var _d = React.useState(""), minFemaleRating = _d[0], setMinFemaleRating = _d[1];
     var _e = React.useState(""), maxFemaleRating = _e[0], setMaxFemaleRating = _e[1];
-
     var _f = React.useState(""), minFemaleAge = _f[0], setMinFemaleAge = _f[1];
     var _g = React.useState(""), maxFemaleAge = _g[0], setMaxFemaleAge = _g[1];
     var _h = React.useState("200"), perPage = _h[0], setPerPage = _h[1];
-    var _i = React.useState(1), serverPage = _i[0], setServerPage = _i[1];
+    var _i = React.useState(1), filteredPage = _i[0], setFilteredPage = _i[1];
+    var _j = React.useState(0), refreshToken = _j[0], setRefreshToken = _j[1];
 
-    var query = Apollo.useQuery(FIND_SCENES_TRIAGE, {
-      variables: {
-        filter: {
-          per_page: Math.max(1, parseOptionalNumber(perPage) || 200),
-          page: serverPage,
-          sort: "filesize",
-          direction: "DESC",
-        },
-      },
-      fetchPolicy: "cache-and-network",
-    });
+    var _k = React.useState([]), rows = _k[0], setRows = _k[1];
+    var _l = React.useState(false), loading = _l[0], setLoading = _l[1];
+    var _m = React.useState(null), error = _m[0], setError = _m[1];
+    var _n = React.useState(false), hasNextPage = _n[0], setHasNextPage = _n[1];
+    var _o = React.useState(0), serverTotal = _o[0], setServerTotal = _o[1];
+    var _p = React.useState(0), scannedScenes = _p[0], setScannedScenes = _p[1];
+    var _q = React.useState(null), knownFilteredTotal = _q[0], setKnownFilteredTotal = _q[1];
 
-    var rows = React.useMemo(function () {
-      var scenes = (((query.data || {}).findScenes || {}).scenes) || [];
-      var withMeta = scenes.map(function (scene) {
-        return { scene: scene, meta: triageMeta(scene) };
-      });
+    React.useEffect(
+      function () {
+        var cancelled = false;
+        var pageSize = Math.max(1, parseOptionalNumber(perPage) || 200);
+        var serverChunkSize = 200;
+        var wantedStart = (filteredPage - 1) * pageSize;
+        var wantedEndExclusive = filteredPage * pageSize;
+        var neededMatchCount = wantedEndExclusive + 1;
 
-      var minScene = parseOptionalNumber(minSceneRating);
-      var maxScene = parseOptionalNumber(maxSceneRating);
-      var minFR = parseOptionalNumber(minFemaleRating);
-      var maxFR = parseOptionalNumber(maxFemaleRating);
-      var minFA = parseOptionalNumber(minFemaleAge);
-      var maxFA = parseOptionalNumber(maxFemaleAge);
+        var filters = {
+          unratedOnly: unratedOnly,
+          minScene: parseOptionalNumber(minSceneRating),
+          maxScene: parseOptionalNumber(maxSceneRating),
+          minFR: parseOptionalNumber(minFemaleRating),
+          maxFR: parseOptionalNumber(maxFemaleRating),
+          minFA: parseOptionalNumber(minFemaleAge),
+          maxFA: parseOptionalNumber(maxFemaleAge),
+        };
 
-      return withMeta
-        .filter(function (row) {
-          if (unratedOnly) {
-            if (row.meta.sceneRating5 != null) return false;
-          } else if (minScene != null || maxScene != null) {
-            if (!inRange(row.meta.sceneRating5, minScene, maxScene)) return false;
+        setLoading(true);
+        setError(null);
+        setKnownFilteredTotal(null);
+
+        (async function () {
+          var collected = [];
+          var page = 1;
+          var maxPages = 1;
+          var localServerTotal = 0;
+          var localScanned = 0;
+          var reachedEnd = false;
+
+          try {
+            while (true) {
+              var res = await apolloClient.query({
+                query: FIND_SCENES_TRIAGE,
+                variables: {
+                  filter: {
+                    per_page: serverChunkSize,
+                    page: page,
+                    sort: "filesize",
+                    direction: "DESC",
+                  },
+                },
+                fetchPolicy: "network-only",
+              });
+
+              var node = (res.data && res.data.findScenes) || {};
+              localServerTotal = Number(node.count || 0);
+              maxPages = Math.max(1, Math.ceil(localServerTotal / serverChunkSize));
+              var scenes = Array.isArray(node.scenes) ? node.scenes : [];
+              localScanned += scenes.length;
+
+              for (var s = 0; s < scenes.length; s += 1) {
+                var row = { scene: scenes[s], meta: triageMeta(scenes[s]) };
+                if (rowMatchesFilters(row, filters)) {
+                  collected.push(row);
+                }
+              }
+
+              if (collected.length >= neededMatchCount) {
+                reachedEnd = false;
+                break;
+              }
+              if (page >= maxPages || scenes.length === 0) {
+                reachedEnd = true;
+                break;
+              }
+              page += 1;
+            }
+          } catch (e) {
+            if (cancelled) return;
+            setError(e);
+            setRows([]);
+            setServerTotal(0);
+            setScannedScenes(0);
+            setHasNextPage(false);
+            setKnownFilteredTotal(null);
+            setLoading(false);
+            return;
           }
 
-          if (!anyInRange(row.meta.femaleRatingValues5, minFR, maxFR)) return false;
-          if (!anyInRange(row.meta.femaleAgeValues, minFA, maxFA)) return false;
+          if (cancelled) return;
 
-          return true;
-        })
-        .sort(function (a, b) {
-          return b.meta.sizeBytes - a.meta.sizeBytes;
-        });
-    }, [
-      query.data,
-      unratedOnly,
-      minSceneRating,
-      maxSceneRating,
-      minFemaleRating,
-      maxFemaleRating,
-      minFemaleAge,
-      maxFemaleAge,
-    ]);
+          setRows(collected.slice(wantedStart, wantedEndExclusive));
+          setServerTotal(localServerTotal);
+          setScannedScenes(localScanned);
+          setHasNextPage(collected.length > wantedEndExclusive);
+          setKnownFilteredTotal(reachedEnd ? collected.length : null);
+          setLoading(false);
+        })();
+
+        return function () {
+          cancelled = true;
+        };
+      },
+      [
+        apolloClient,
+        unratedOnly,
+        minSceneRating,
+        maxSceneRating,
+        minFemaleRating,
+        maxFemaleRating,
+        minFemaleAge,
+        maxFemaleAge,
+        perPage,
+        filteredPage,
+        refreshToken,
+      ]
+    );
+
     var perPageNum = Math.max(1, parseOptionalNumber(perPage) || 200);
-    var serverTotal = (((query.data || {}).findScenes || {}).count) || 0;
-    var pageCount = Math.max(1, Math.ceil(serverTotal / perPageNum));
-    var currentPage = Math.min(serverPage, pageCount);
-    var visibleFrom = rows.length === 0 ? 0 : (currentPage - 1) * perPageNum + 1;
+    var visibleFrom = rows.length === 0 ? 0 : (filteredPage - 1) * perPageNum + 1;
     var visibleTo = visibleFrom + rows.length - 1;
 
     return React.createElement(
@@ -229,7 +304,7 @@
       React.createElement(
         "div",
         { className: "library-triage-muted" },
-        "Top scenes sorted by total file size. Ratings shown on a 1-5 scale."
+        "Top scenes sorted by total file size. Filters apply globally across all scenes before pagination."
       ),
       React.createElement(
         "div",
@@ -241,7 +316,7 @@
           checked: unratedOnly,
           onChange: function (e) {
             setUnratedOnly(e.target.checked);
-            setServerPage(1);
+            setFilteredPage(1);
           },
         }),
         React.createElement("label", { htmlFor: "triage-per-page" }, "Rows per page:"),
@@ -253,7 +328,7 @@
           value: perPage,
           onChange: function (e) {
             setPerPage(e.target.value);
-            setServerPage(1);
+            setFilteredPage(1);
           },
           placeholder: "200",
         }),
@@ -268,7 +343,7 @@
           value: minSceneRating,
           onChange: function (e) {
             setMinSceneRating(e.target.value);
-            setServerPage(1);
+            setFilteredPage(1);
           },
           placeholder: "any",
         }),
@@ -282,7 +357,7 @@
           value: maxSceneRating,
           onChange: function (e) {
             setMaxSceneRating(e.target.value);
-            setServerPage(1);
+            setFilteredPage(1);
           },
           placeholder: "any",
         }),
@@ -297,7 +372,7 @@
           value: minFemaleRating,
           onChange: function (e) {
             setMinFemaleRating(e.target.value);
-            setServerPage(1);
+            setFilteredPage(1);
           },
           placeholder: "any",
         }),
@@ -311,7 +386,7 @@
           value: maxFemaleRating,
           onChange: function (e) {
             setMaxFemaleRating(e.target.value);
-            setServerPage(1);
+            setFilteredPage(1);
           },
           placeholder: "any",
         }),
@@ -325,7 +400,7 @@
           value: minFemaleAge,
           onChange: function (e) {
             setMinFemaleAge(e.target.value);
-            setServerPage(1);
+            setFilteredPage(1);
           },
           placeholder: "any",
         }),
@@ -338,7 +413,7 @@
           value: maxFemaleAge,
           onChange: function (e) {
             setMaxFemaleAge(e.target.value);
-            setServerPage(1);
+            setFilteredPage(1);
           },
           placeholder: "any",
         }),
@@ -348,7 +423,9 @@
           {
             size: "sm",
             onClick: function () {
-              query.refetch();
+              setRefreshToken(function (v) {
+                return v + 1;
+              });
             },
           },
           "Refresh"
@@ -361,11 +438,11 @@
           String(visibleFrom) +
           "-" +
           String(visibleTo) +
-          " of " +
-          String(rows.length) +
-          " filtered scenes on this page (" +
-          String(serverTotal) +
-          " total scenes)."
+          " filtered scenes on page " +
+          String(filteredPage) +
+          (knownFilteredTotal != null
+            ? " (" + String(knownFilteredTotal) + " total filtered, " + String(serverTotal) + " total scenes)."
+            : " (scanned " + String(scannedScenes) + " / " + String(serverTotal) + " scenes so far).")
       ),
       React.createElement(
         "div",
@@ -374,9 +451,9 @@
           Button,
           {
             size: "sm",
-            disabled: currentPage <= 1,
+            disabled: filteredPage <= 1,
             onClick: function () {
-              setServerPage(Math.max(1, currentPage - 1));
+              setFilteredPage(Math.max(1, filteredPage - 1));
             },
           },
           "Prev"
@@ -384,23 +461,25 @@
         React.createElement(
           "span",
           { className: "library-triage-muted" },
-          "Page " + String(currentPage) + " / " + String(pageCount)
+          knownFilteredTotal != null
+            ? "Page " + String(filteredPage) + " / " + String(Math.max(1, Math.ceil(knownFilteredTotal / perPageNum)))
+            : "Page " + String(filteredPage)
         ),
         React.createElement(
           Button,
           {
             size: "sm",
-            disabled: currentPage >= pageCount,
+            disabled: !hasNextPage,
             onClick: function () {
-              setServerPage(Math.min(pageCount, currentPage + 1));
+              if (hasNextPage) setFilteredPage(filteredPage + 1);
             },
           },
           "Next"
         )
       ),
-      query.loading ? React.createElement("div", null, "Loading...") : null,
-      query.error
-        ? React.createElement("div", { className: "text-danger" }, "Error: " + query.error.message)
+      loading ? React.createElement("div", null, "Loading...") : null,
+      error
+        ? React.createElement("div", { className: "text-danger" }, "Error: " + (error.message || String(error)))
         : null,
       React.createElement(
         Table,
