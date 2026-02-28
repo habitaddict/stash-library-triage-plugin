@@ -291,7 +291,18 @@
       var created = createTag(name);
       if (created && created.id) return created.id;
     } catch (e) {
-      log.Warn("tagCreate failed for " + name + ", retrying find: " + String(e));
+      var err = String(e || "");
+      log.Warn("tagCreate failed for " + name + ", retrying find: " + err);
+
+      // Stash can reject creating a tag when that name already exists as an alias
+      // for another tag. In that case, resolve the canonical tag and reuse it.
+      var aliasMatch = err.match(/used as alias for '([^']+)'/);
+      if (aliasMatch && aliasMatch[1]) {
+        var canonical = findTagByName(aliasMatch[1]);
+        if (canonical && canonical.id) {
+          return canonical.id;
+        }
+      }
     }
 
     var retry = findTagByName(name);
