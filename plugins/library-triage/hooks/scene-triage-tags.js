@@ -14,6 +14,7 @@
     "Age Gap:",
   ];
   var PERFORMER_RATING_TAG_REGEX = /^rated [1-5]$/;
+  var YFEM_CANONICAL_TAG = "Age Gap: Young Female (<23y), Experienced Male (10y older)";
 
   var UNRATED_CF_KEY = "triage_unrated_scene_count";
 
@@ -284,6 +285,11 @@
   }
 
   function getOrCreateTagID(name) {
+    if (name === "YFEM") {
+      var yfemCanonical = findTagByName(YFEM_CANONICAL_TAG);
+      if (yfemCanonical && yfemCanonical.id) return yfemCanonical.id;
+    }
+
     var existing = findTagByName(name);
     if (existing && existing.id) return existing.id;
 
@@ -302,6 +308,11 @@
         if (canonical && canonical.id) {
           return canonical.id;
         }
+      }
+
+      if (name === "YFEM") {
+        var yfemCanonicalRetry = findTagByName(YFEM_CANONICAL_TAG);
+        if (yfemCanonicalRetry && yfemCanonicalRetry.id) return yfemCanonicalRetry.id;
       }
     }
 
