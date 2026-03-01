@@ -86,6 +86,10 @@ When a scene has at least one performer with `gender == FEMALE`, the plugin mana
   - if a scene tag name matches any selector, it is added to all markers of that scene
   - if a managed scene tag is removed from scene, it is removed from markers
   - only matched/managed tags are touched; marker-only tags are preserved
+  - marker->scene sync is also enabled for the same selectors:
+    - if marker tag set changes for matched tags, scene managed tags are recomputed from marker union
+    - no scene update is sent when effective scene tags are unchanged (loop-safe no-op)
+    - hook skips if scene id cannot be resolved
   - defaults are preconfigured for your triage workflow:
     - all `girl-rated-*` tags
     - all `* years old` tags (exact age + buckets)
@@ -126,6 +130,16 @@ Notes:
   - `Scene.Create.Post`
   - `Scene.Update.Post` (when update payload includes a concrete tag change, e.g. `tag_ids`/`tags`)
 - Uses `marker_copy_tags` from plugin hook args.
+
+### Marker -> scene tag sync (optional)
+- Triggered by:
+  - `SceneMarker.Create.Post`
+  - `SceneMarker.Update.Post` (only when payload includes concrete marker tag changes)
+  - `SceneMarker.Destroy.Post`
+- Uses `marker_copy_tags` from plugin hook args.
+- Guards:
+  - requires resolvable scene id
+  - updates scene only when effective managed scene tags actually changed
 
 ### Performer metrics + studio unrated tag
 - Triggered by:

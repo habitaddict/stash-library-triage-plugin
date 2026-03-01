@@ -66,3 +66,12 @@ hooks:
     triggeredBy:
       - Scene.Create.Post
       - Scene.Update.Post
+  - name: Copy configured marker tags to scene
+    description: Syncs configured marker tags back to scene on marker tag edits.
+    defaultArgs:
+      action: sync_scene_tags_from_markers
+      marker_copy_tags: ""
+    triggeredBy:
+      - SceneMarker.Create.Post
+      - SceneMarker.Update.Post
+      - SceneMarker.Destroy.Post

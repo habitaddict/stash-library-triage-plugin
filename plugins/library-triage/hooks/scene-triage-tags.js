@@ -326,6 +326,12 @@
     return res && res.findScene ? res.findScene : null;
   }
 
+  function fetchSceneMarker(markerID) {
+    var q = "query ($id: ID!) { findSceneMarker(id: $id) { id scene { id } tags { id name } } }";
+    var res = doGQL(q, { id: String(markerID) });
+    return res && res.findSceneMarker ? res.findSceneMarker : null;
+  }
+
   function fetchSceneEntities(sceneID) {
     var q = "query ($id: ID!) { findScene(id: $id) { id studio { id } performers { id } } }";
     var res = doGQL(q, { id: String(sceneID) });
@@ -1339,6 +1345,140 @@
     return syncConfiguredSceneTagsToMarkersForScene(String(hookContext.id), selectors);
   }
 
+  function extractSceneIDFromMarkerHook(hookContext) {
+    var inputObj = hookContext && hookContext.input && typeof hookContext.input === "object" ? hookContext.input : {};
+    var objectObj = hookContext && hookContext.object && typeof hookContext.object === "object" ? hookContext.object : {};
+
+    function idFrom(v) {
+      if (v == null) return "";
+      var s = String(v).trim();
+      return s ? s : "";
+    }
+
+    var direct = idFrom(inputObj.scene_id || inputObj.sceneId || objectObj.scene_id || objectObj.sceneId);
+    if (direct) return direct;
+
+    var nestedInput = inputObj.scene && typeof inputObj.scene === "object" ? idFrom(inputObj.scene.id) : "";
+    if (nestedInput) return nestedInput;
+
+    var nestedObject = objectObj.scene && typeof objectObj.scene === "object" ? idFrom(objectObj.scene.id) : "";
+    if (nestedObject) return nestedObject;
+
+    var markerID = hookContext && hookContext.id != null ? String(hookContext.id) : "";
+    if (!markerID) return "";
+    var marker = fetchSceneMarker(markerID);
+    if (marker && marker.scene && marker.scene.id) return String(marker.scene.id);
+    return "";
+  }
+
+  function syncConfiguredMarkerTagsToScene(sceneID, selectors) {
+    if (!selectors.length) {
+      return { Output: "No marker_copy_tags configured; marker->scene tag sync skipped" };
+    }
+
+    var scene = fetchSceneWithMarkers(sceneID);
+    if (!scene) return { Error: "Scene not found for marker->scene sync: " + sceneID };
+
+    var desiredManaged = [];
+    var desiredManagedSet = {};
+    var markers = Array.isArray(scene.scene_markers) ? scene.scene_markers : [];
+    for (var m = 0; m < markers.length; m += 1) {
+      var marker = markers[m];
+      var markerTags = marker && Array.isArray(marker.tags) ? marker.tags : [];
+      for (var mt = 0; mt < markerTags.length; mt += 1) {
+        var tag = markerTags[mt];
+        if (!tag || !tag.id || !tag.name) continue;
+        var name = String(tag.name);
+        var id = String(tag.id);
+        if (!matchesAnySelector(name, selectors)) continue;
+        if (desiredManagedSet[id]) continue;
+        desiredManagedSet[id] = true;
+        desiredManaged.push(id);
+      }
+    }
+
+    var currentSceneTags = Array.isArray(scene.tags) ? scene.tags : [];
+    var nextSceneTagIDs = [];
+    var seen = {};
+
+    for (var st = 0; st < currentSceneTags.length; st += 1) {
+      var sceneTag = currentSceneTags[st];
+      if (!sceneTag || !sceneTag.id) continue;
+      var sceneTagID = String(sceneTag.id);
+      var sceneTagName = String(sceneTag.name || "");
+      if (matchesAnySelector(sceneTagName, selectors)) continue;
+      if (seen[sceneTagID]) continue;
+      seen[sceneTagID] = true;
+      nextSceneTagIDs.push(sceneTagID);
+    }
+
+    for (var d = 0; d < desiredManaged.length; d += 1) {
+      var did = String(desiredManaged[d]);
+      if (seen[did]) continue;
+      seen[did] = true;
+      nextSceneTagIDs.push(did);
+    }
+
+    var currentIDs = currentSceneTags
+      .map(function (tagObj) {
+        return tagObj && tagObj.id ? String(tagObj.id) : null;
+      })
+      .filter(function (id) {
+        return !!id;
+      });
+
+    var currentSorted = sortedUnique(currentIDs);
+    var nextSorted = sortedUnique(nextSceneTagIDs);
+    if (sameSortedStringSet(currentSorted, nextSorted)) {
+      return { Output: "Marker->scene managed tags already in sync for scene " + sceneID };
+    }
+
+    updateSceneTags(sceneID, nextSceneTagIDs);
+    return {
+      Output:
+        "Synced configured marker tags to scene " +
+        sceneID +
+        ". markers=" +
+        markers.length +
+        ", scene_tags_updated=1",
+    };
+  }
+
+  function runMarkerToSceneTagCopyAction() {
+    var selectors = getMarkerCopyTagNames();
+    var hookContext = getHookContext();
+    if (!hookContext || !hookContext.type) {
+      return { Output: "Marker->scene sync requires hook context; skipped" };
+    }
+
+    var hookType = String(hookContext.type || "");
+    if (hookType === "SceneMarker.Update.Post") {
+      var fields = Array.isArray(hookContext.inputFields) ? hookContext.inputFields : [];
+      var tagFieldChanged = false;
+      for (var f = 0; f < fields.length; f += 1) {
+        var fieldName = String(fields[f] || "");
+        if (fieldName === "tag_ids" || fieldName === "tags" || fieldName === "tagIds") {
+          tagFieldChanged = true;
+          break;
+        }
+      }
+      var inputObj = hookContext.input && typeof hookContext.input === "object" ? hookContext.input : {};
+      var hasTagPayload =
+        (Object.prototype.hasOwnProperty.call(inputObj, "tag_ids") && inputObj.tag_ids != null) ||
+        (Object.prototype.hasOwnProperty.call(inputObj, "tags") && inputObj.tags != null) ||
+        (Object.prototype.hasOwnProperty.call(inputObj, "tagIds") && inputObj.tagIds != null);
+      if (!tagFieldChanged || !hasTagPayload) {
+        return { Output: "SceneMarker update had no concrete tag change payload; marker->scene sync skipped" };
+      }
+    }
+
+    var sceneID = extractSceneIDFromMarkerHook(hookContext);
+    if (!sceneID) {
+      return { Output: "SceneMarker hook had no resolvable scene id; marker->scene sync skipped" };
+    }
+    return syncConfiguredMarkerTagsToScene(sceneID, selectors);
+  }
+
   function runFullRecountAction() {
     var metricsResult = recountAllUnratedCounts();
     if (metricsResult && metricsResult.Error) return metricsResult;
@@ -1374,6 +1514,8 @@
       result = runFullRecountAction();
     } else if (action === "sync_marker_tags") {
       result = runSceneMarkerTagCopyAction();
+    } else if (action === "sync_scene_tags_from_markers") {
+      result = runMarkerToSceneTagCopyAction();
     } else {
       result = runSceneTagAction();
     }
