@@ -327,9 +327,15 @@
   }
 
   function fetchSceneMarker(markerID) {
-    var q = "query ($id: ID!) { findSceneMarker(id: $id) { id scene { id } tags { id name } } }";
-    var res = doGQL(q, { id: String(markerID) });
-    return res && res.findSceneMarker ? res.findSceneMarker : null;
+    var q =
+      "query ($ids: [ID!]) { findSceneMarkers(ids: $ids, filter: { per_page: 1 }) { scene_markers { id scene { id } tags { id name } } } }";
+    try {
+      var res = doGQL(q, { ids: [String(markerID)] });
+      var markers = res && res.findSceneMarkers ? res.findSceneMarkers.scene_markers : [];
+      return markers && markers.length ? markers[0] : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   function fetchTagByID(tagID) {
@@ -1007,6 +1013,28 @@
     }
 
     var hookType = String(hookContext.type || "");
+
+    if (hookType === "Scene.Update.Post") {
+      var sceneFields = Array.isArray(hookContext.inputFields) ? hookContext.inputFields : [];
+      if (sceneFields.length > 0) {
+        var relevantSceneChanges = {
+          date: true,
+          performer_ids: true,
+          performerIds: true,
+          performers: true,
+        };
+        var hasRelevantSceneChange = false;
+        for (var sf = 0; sf < sceneFields.length; sf += 1) {
+          if (relevantSceneChanges[String(sceneFields[sf] || "")]) {
+            hasRelevantSceneChange = true;
+            break;
+          }
+        }
+        if (!hasRelevantSceneChange) {
+          return { Output: "Scene update had no date/performer changes, skipping scene tag recompute" };
+        }
+      }
+    }
 
     if (hookType === "Performer.Update.Post") {
       var inputFields = Array.isArray(hookContext.inputFields) ? hookContext.inputFields : [];
