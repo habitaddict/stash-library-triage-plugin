@@ -877,6 +877,7 @@
     }
 
     function relationshipBulkValueHasChange(v) {
+      if (Array.isArray(v)) return false;
       if (!v || typeof v !== "object") return false;
       if (Array.isArray(v.ids) && v.ids.length > 0) return true;
       if (typeof v.mode === "string" && v.mode.trim() !== "") return true;
@@ -887,6 +888,12 @@
     // Bulk scene updates include "ids" and often carry relationship keys even for rating-only edits.
     // Treat bulk scene updates as fast-path and rely on targeted refresh + manual full recount if needed.
     if (hasOwn(input, "ids")) {
+      return false;
+    }
+
+    // Full-scene edit forms often submit many fields (including relationship keys)
+    // even when only tags/rating/title changed. Avoid expensive false-positive recounts.
+    if (fields.length > 6) {
       return false;
     }
 
