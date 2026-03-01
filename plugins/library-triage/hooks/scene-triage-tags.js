@@ -19,6 +19,131 @@
   var UNRATED_CF_KEY = "triage_unrated_scene_count";
   var STORAGE_BYTES_CF_KEY = "triage_total_size_bytes";
   var STUDIO_UNRATED_TAG_NAME = "has unrated scenes";
+  var DEFAULT_MARKER_COPY_TAG_SELECTORS = [
+    "girl-rated-*",
+    "* years old",
+    "Age Gap:*",
+    "First Porn Scene",
+    "Fake Boobs",
+    "Fake Tits",
+    "Fake Tits Bimbo",
+    "Braces",
+    "Audition",
+    "Casting",
+    "Teen (18-22)",
+    "Teen (18–22)",
+    "Teen Girl (18–22)",
+    "Skinny",
+    "Slim",
+    "Small Tits",
+    "White on Black",
+    "First Anal Scene",
+    "First Interracial Experience",
+    "First Interracial Scene",
+    "First Time",
+    "Big vs. Small",
+    "Bimbo",
+    "Escort",
+    "Experienced Man (30–40)",
+    "Middle-aged Man (40–60)",
+    "Older / Younger",
+    "Older Man / Younger Woman",
+    "Hairless Pussy",
+    "Brown Hair",
+    "Short Woman",
+    "Blonde Hair",
+    "Blonde",
+    "Big Dick",
+    "Twosome (Straight)",
+    "Long Hair",
+    "White Woman",
+    "Brown Hair (Female)",
+    "Trimmed Pussy",
+    "Blonde Hair (Female)",
+    "American",
+    "Hairy Pussy",
+    "Small Ass",
+    "Amateur",
+    "Objectified Amateur",
+    "Medium Tits",
+    "Behind the Scenes",
+    "Pornstar",
+    "Interracial",
+    "White",
+    "Asian",
+    "Black",
+    "Big Ass",
+    "Latina Woman",
+    "Latina",
+    "Innie Pussy",
+    "Tan Lines",
+    "Piercing",
+    "Professional Production",
+    "White Man",
+    "Straight Hair",
+    "Navel Piercing",
+    "Babes",
+    "Family Roleplay",
+    "Athletic Woman",
+    "Tattoos & Piercings",
+    "Adorable",
+    "European",
+    "Pale Skin",
+    "Brown Eyes",
+    "Blue Eyes",
+    "Green Eyes",
+    "Medium Skin",
+    "Hairless Genitals",
+    "Candid",
+    "Tanned Skin",
+    "Athletic",
+    "All Natural",
+    "Outie Pussy",
+    "Average Height Woman",
+    "Shaved",
+    "Latin",
+    "Reality Porn",
+    "Tiny Woman",
+    "Tiny",
+    "Perky Tits",
+    "Curly Hair",
+    "Wavy Hair",
+    "Big Black Cock (BBC)",
+    "No Tattoos",
+    "Missing or Removed",
+    "Black Man",
+    "Pigtails",
+    "Necklace",
+    "Manicured",
+    "Freckles",
+    "Perky Nipples",
+    "Uniform",
+    "Nose Piercing",
+    "Puffy Nipples",
+    "Innocent",
+    "Average Body",
+    "Big White Cock (BWC)",
+    "Black Hair (Female)",
+    "Curvy",
+    "Muscular Man",
+    "Coed",
+    "Ponytail",
+    "Schoolgirl",
+    "American Porn",
+    "Earrings",
+    "Medium Hair",
+    "Tiny Tits",
+    "Asian Woman",
+    "Average Male Body",
+    "Tongue Piercing",
+    "Short Hair",
+    "Caucasian",
+    "Black on White",
+    "Cheerleader",
+    "Hazel Eyes",
+    "PAWG",
+    "Tall Woman"
+  ];
 
   function getArgs() {
     if (!input) return {};
@@ -38,15 +163,7 @@
   function getMarkerCopyTagNames() {
     var args = getArgs();
     var raw = args.marker_copy_tags != null ? args.marker_copy_tags : args.markerCopyTags;
-    var values = [];
-
-    if (Array.isArray(raw)) {
-      values = raw;
-    } else if (typeof raw === "string") {
-      values = raw.split(",");
-    } else if (raw != null) {
-      values = [String(raw)];
-    }
+    var values = Array.isArray(raw) && raw.length ? raw : DEFAULT_MARKER_COPY_TAG_SELECTORS;
 
     var dedup = {};
     var out = [];
@@ -57,6 +174,23 @@
       out.push(v);
     }
     return out;
+  }
+
+  function matchesSelector(name, selector) {
+    var n = String(name || "");
+    var s = String(selector || "");
+    if (s.indexOf("*") < 0) return n === s;
+
+    var escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\\*/g, ".*");
+    var re = new RegExp("^" + escaped + "$");
+    return re.test(n);
+  }
+
+  function matchesAnySelector(name, selectors) {
+    for (var i = 0; i < selectors.length; i += 1) {
+      if (matchesSelector(name, selectors[i])) return true;
+    }
+    return false;
   }
 
   function parseDate(s) {
@@ -1046,52 +1180,27 @@
     };
   }
 
-  function resolveExistingTagIDsByName(tagNames) {
-    var out = {};
-    for (var i = 0; i < tagNames.length; i += 1) {
-      var name = tagNames[i];
-      var found = findTagByName(name);
-      if (found && found.id) out[name] = String(found.id);
-    }
-    return out;
-  }
-
-  function syncConfiguredSceneTagsToMarkersForScene(sceneID, configuredNames) {
-    if (!configuredNames.length) {
+  function syncConfiguredSceneTagsToMarkersForScene(sceneID, selectors) {
+    if (!selectors.length) {
       return { Output: "No marker_copy_tags configured; marker tag sync skipped" };
     }
 
     var scene = fetchSceneWithMarkers(sceneID);
     if (!scene) return { Error: "Scene not found for marker sync: " + sceneID };
 
-    var nameToID = resolveExistingTagIDsByName(configuredNames);
-    var managedIDs = [];
-    for (var n = 0; n < configuredNames.length; n += 1) {
-      var idForName = nameToID[configuredNames[n]];
-      if (idForName) managedIDs.push(idForName);
-    }
-
-    var sceneTagNames = {};
+    var desiredIDs = [];
+    var desiredSet = {};
     var sceneTags = Array.isArray(scene.tags) ? scene.tags : [];
     for (var i = 0; i < sceneTags.length; i += 1) {
       var st = sceneTags[i];
-      if (st && st.name) sceneTagNames[String(st.name)] = true;
-      if (st && st.name && st.id && configuredNames.indexOf(String(st.name)) >= 0 && !nameToID[String(st.name)]) {
-        nameToID[String(st.name)] = String(st.id);
-        managedIDs.push(String(st.id));
-      }
+      if (!st || !st.id || !st.name) continue;
+      var stName = String(st.name);
+      var stID = String(st.id);
+      if (!matchesAnySelector(stName, selectors)) continue;
+      if (desiredSet[stID]) continue;
+      desiredSet[stID] = true;
+      desiredIDs.push(stID);
     }
-
-    var desiredIDs = [];
-    for (var c = 0; c < configuredNames.length; c += 1) {
-      var cn = configuredNames[c];
-      if (!sceneTagNames[cn]) continue;
-      var cid = nameToID[cn];
-      if (cid) desiredIDs.push(cid);
-    }
-
-    var managedSet = {};
-    for (var m = 0; m < managedIDs.length; m += 1) managedSet[String(managedIDs[m])] = true;
 
     var markers = Array.isArray(scene.scene_markers) ? scene.scene_markers : [];
     var updated = 0;
@@ -1107,7 +1216,8 @@
         var tag = current[t];
         if (!tag || !tag.id) continue;
         var tid = String(tag.id);
-        if (managedSet[tid]) continue;
+        var tname = String(tag.name || "");
+        if (matchesAnySelector(tname, selectors)) continue;
         if (seen[tid]) continue;
         seen[tid] = true;
         nextIDs.push(tid);
@@ -1148,10 +1258,10 @@
   }
 
   function runSceneMarkerTagCopyAction() {
-    var configuredNames = getMarkerCopyTagNames();
+    var selectors = getMarkerCopyTagNames();
     var hookContext = getHookContext();
     if (!hookContext || !hookContext.id) {
-      if (!configuredNames.length) {
+      if (!selectors.length) {
         return { Output: "No marker_copy_tags configured; marker tag sync skipped" };
       }
 
@@ -1160,7 +1270,7 @@
       var failed = 0;
       var firstError = null;
       for (var i = 0; i < sceneIDs.length; i += 1) {
-        var res = syncConfiguredSceneTagsToMarkersForScene(sceneIDs[i], configuredNames);
+        var res = syncConfiguredSceneTagsToMarkersForScene(sceneIDs[i], selectors);
         if (res && res.Error) {
           failed += 1;
           if (!firstError) firstError = res.Error;
@@ -1199,7 +1309,7 @@
       }
     }
 
-    return syncConfiguredSceneTagsToMarkersForScene(String(hookContext.id), configuredNames);
+    return syncConfiguredSceneTagsToMarkersForScene(String(hookContext.id), selectors);
   }
 
   function runFullRecountAction() {

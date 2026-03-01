@@ -79,11 +79,18 @@ When a scene has at least one performer with `gender == FEMALE`, the plugin mana
 
 ### Optional marker tag sync (configurable)
 - You can configure tags that should be copied from scene to all scene markers.
-- Config key in hook/task args: `marker_copy_tags` (comma-separated names).
+- Config key in hook/task args: `marker_copy_tags` (array of selector strings).
+- Wildcard `*` is supported in selectors.
+- Example: `["girl-rated-*", "* years old", "Tag, With Comma"]`
 - Behavior:
-  - if configured tag is on scene, it is added to all markers of that scene
-  - if configured tag is removed from scene, it is removed from markers
-  - only configured tags are managed; marker-only tags are preserved
+  - if a scene tag name matches any selector, it is added to all markers of that scene
+  - if a managed scene tag is removed from scene, it is removed from markers
+  - only matched/managed tags are touched; marker-only tags are preserved
+  - defaults are preconfigured for your triage workflow:
+    - all `girl-rated-*` tags
+    - all `* years old` tags (exact age + buckets)
+    - all `Age Gap:*` tags
+    - plus the explicit tag set you listed (e.g. `First Porn Scene`, `Fake Tits`, `Audition`, `Casting`, `Teen (18-22)`, etc.)
 
 Notes:
 - Female means exactly `gender == FEMALE` (transgender female is intentionally ignored).
