@@ -332,6 +332,12 @@
     return res && res.findSceneMarker ? res.findSceneMarker : null;
   }
 
+  function fetchTagByID(tagID) {
+    var q = "query ($id: ID!) { findTag(id: $id) { id name } }";
+    var res = doGQL(q, { id: String(tagID) });
+    return res && res.findTag ? res.findTag : null;
+  }
+
   function fetchSceneEntities(sceneID) {
     var q = "query ($id: ID!) { findScene(id: $id) { id studio { id } performers { id } } }";
     var res = doGQL(q, { id: String(sceneID) });
@@ -1345,6 +1351,44 @@
     return syncConfiguredSceneTagsToMarkersForScene(String(hookContext.id), selectors);
   }
 
+  function extractTagIDsFromMarkerInput(inputObj) {
+    if (!inputObj || typeof inputObj !== "object") return null;
+
+    function toIDArray(v) {
+      if (!Array.isArray(v)) return null;
+      var out = [];
+      var seen = {};
+      for (var i = 0; i < v.length; i += 1) {
+        var item = v[i];
+        var id = "";
+        if (item == null) continue;
+        if (typeof item === "string" || typeof item === "number") {
+          id = String(item).trim();
+        } else if (typeof item === "object" && item.id != null) {
+          id = String(item.id).trim();
+        }
+        if (!id || seen[id]) continue;
+        seen[id] = true;
+        out.push(id);
+      }
+      return out;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(inputObj, "tag_ids")) {
+      var idsA = toIDArray(inputObj.tag_ids);
+      if (idsA) return idsA;
+    }
+    if (Object.prototype.hasOwnProperty.call(inputObj, "tagIds")) {
+      var idsB = toIDArray(inputObj.tagIds);
+      if (idsB) return idsB;
+    }
+    if (Object.prototype.hasOwnProperty.call(inputObj, "tags")) {
+      var idsC = toIDArray(inputObj.tags);
+      if (idsC) return idsC;
+    }
+    return null;
+  }
+
   function extractSceneIDFromMarkerHook(hookContext) {
     var inputObj = hookContext && hookContext.input && typeof hookContext.input === "object" ? hookContext.input : {};
     var objectObj = hookContext && hookContext.object && typeof hookContext.object === "object" ? hookContext.object : {};
@@ -1371,7 +1415,7 @@
     return "";
   }
 
-  function syncConfiguredMarkerTagsToScene(sceneID, selectors) {
+  function syncConfiguredMarkerTagsToScene(sceneID, selectors, markerOverride) {
     if (!selectors.length) {
       return { Output: "No marker_copy_tags configured; marker->scene tag sync skipped" };
     }
@@ -1382,9 +1426,32 @@
     var desiredManaged = [];
     var desiredManagedSet = {};
     var markers = Array.isArray(scene.scene_markers) ? scene.scene_markers : [];
+    var overrideTagNameByID = {};
+    var overrideMarkerID = markerOverride && markerOverride.markerID ? String(markerOverride.markerID) : "";
+    var overrideTagIDs = markerOverride && Array.isArray(markerOverride.tagIDs) ? markerOverride.tagIDs : null;
+
+    if (overrideMarkerID && overrideTagIDs) {
+      for (var ot = 0; ot < overrideTagIDs.length; ot += 1) {
+        var overrideID = String(overrideTagIDs[ot] || "").trim();
+        if (!overrideID || overrideTagNameByID[overrideID]) continue;
+        var tagObj = fetchTagByID(overrideID);
+        if (tagObj && tagObj.id && tagObj.name) {
+          overrideTagNameByID[String(tagObj.id)] = String(tagObj.name);
+        }
+      }
+    }
+
     for (var m = 0; m < markers.length; m += 1) {
       var marker = markers[m];
       var markerTags = marker && Array.isArray(marker.tags) ? marker.tags : [];
+
+      if (overrideMarkerID && marker && String(marker.id || "") === overrideMarkerID && overrideTagIDs) {
+        markerTags = overrideTagIDs.map(function (id) {
+          var sid = String(id);
+          return { id: sid, name: overrideTagNameByID[sid] || "" };
+        });
+      }
+
       for (var mt = 0; mt < markerTags.length; mt += 1) {
         var tag = markerTags[mt];
         if (!tag || !tag.id || !tag.name) continue;
@@ -1476,7 +1543,18 @@
     if (!sceneID) {
       return { Output: "SceneMarker hook had no resolvable scene id; marker->scene sync skipped" };
     }
-    return syncConfiguredMarkerTagsToScene(sceneID, selectors);
+
+    var markerOverride = null;
+    if (hookType === "SceneMarker.Update.Post") {
+      var inputObj2 = hookContext.input && typeof hookContext.input === "object" ? hookContext.input : {};
+      var tagIDsFromInput = extractTagIDsFromMarkerInput(inputObj2);
+      var markerID = hookContext && hookContext.id != null ? String(hookContext.id) : "";
+      if (markerID && Array.isArray(tagIDsFromInput)) {
+        markerOverride = { markerID: markerID, tagIDs: tagIDsFromInput };
+      }
+    }
+
+    return syncConfiguredMarkerTagsToScene(sceneID, selectors, markerOverride);
   }
 
   function runFullRecountAction() {
