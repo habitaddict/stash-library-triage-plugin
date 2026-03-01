@@ -19,6 +19,11 @@ tasks:
     description: Recomputes performer metrics, studio has-unrated tag, and all managed scene triage tags.
     defaultArgs:
       action: recount_all
+  - name: Sync configured scene tags to markers
+    description: Copies configured scene tags to all markers of each scene.
+    defaultArgs:
+      action: sync_marker_tags
+      marker_copy_tags: ""
   - name: Recompute performer metrics
     description: Recomputes performer metrics and studio has-unrated-scenes tag state.
     defaultArgs:
@@ -53,3 +58,11 @@ hooks:
     triggeredBy:
       - Performer.Create.Post
       - Performer.Update.Post
+  - name: Copy configured scene tags to markers
+    description: Syncs configured scene tags to scene markers when scene tags change.
+    defaultArgs:
+      action: sync_marker_tags
+      marker_copy_tags: ""
+    triggeredBy:
+      - Scene.Create.Post
+      - Scene.Update.Post

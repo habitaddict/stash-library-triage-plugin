@@ -77,6 +77,14 @@ When a scene has at least one performer with `gender == FEMALE`, the plugin mana
   - `Age Gap: Male 25++ years older`
   - `Age Gap: Young Female (<23y), Experienced Male (10y older)` (you can keep `YFEM` as alias in Stash)
 
+### Optional marker tag sync (configurable)
+- You can configure tags that should be copied from scene to all scene markers.
+- Config key in hook/task args: `marker_copy_tags` (comma-separated names).
+- Behavior:
+  - if configured tag is on scene, it is added to all markers of that scene
+  - if configured tag is removed from scene, it is removed from markers
+  - only configured tags are managed; marker-only tags are preserved
+
 Notes:
 - Female means exactly `gender == FEMALE` (transgender female is intentionally ignored).
 - Ages are calculated at scene date.
@@ -106,6 +114,12 @@ Notes:
   - `Scene.Update.Post`
   - `Performer.Update.Post` (when relevant performer fields changed)
 
+### Marker tag sync (optional)
+- Triggered by:
+  - `Scene.Create.Post`
+  - `Scene.Update.Post` (only when `tag_ids` is concretely provided)
+- Uses `marker_copy_tags` from plugin hook args.
+
 ### Performer metrics + studio unrated tag
 - Triggered by:
   - `Scene.Create.Post`
@@ -123,6 +137,8 @@ Notes:
 
 - `Recompute all triage data (recommended)`
   - runs both of the tasks below in one step
+- `Sync configured scene tags to markers`
+  - runs marker tag sync across all scenes using `marker_copy_tags`
 - `Recompute performer metrics`
   - full recount of performer metrics and studio `has unrated scenes` tag:
   - `triage_unrated_scene_count`
