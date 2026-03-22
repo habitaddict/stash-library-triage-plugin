@@ -1,0 +1,9 @@
+- id: library-triage
+  name: Library Triage
+  metadata:
+    description: Adds a largest-files triage page and auto-tags scenes from female performer rating/age signals.
+  version: 0.1.0-16ee44c
+  date: 2026-03-01 19:01:55
+  path: library-triage.zip
+  sha256: 
+
